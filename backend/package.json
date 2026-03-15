@@ -1,0 +1,33 @@
+{
+  "name": "backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Strapi application",
+  "scripts": {
+    "build": "strapi build",
+    "dev": "strapi develop",
+    "develop": "strapi develop",
+    "start": "strapi start",
+    "strapi": "strapi"
+  },
+  "dependencies": {
+    "@strapi/plugin-cloud": "5.33.3",
+    "@strapi/plugin-users-permissions": "5.33.3",
+    "@strapi/strapi": "5.33.3",
+    "fs-extra": "^10.0.0",
+    "mime-types": "^2.1.27"
+  },
+  "devDependencies": {
+    "@types/koa": "^3.0.1",
+    "@types/node": "^20",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20.0.0 <=24.x.x",
+    "npm": ">=6.0.0"
+  },
+  "strapi": {
+    "uuid": "eba6d6c7-3358-458f-8135-9fe5b80e4f53",
+    "installId": "fcddbafab7251a49e776f5bb8b9e6cc28da991fac9cd7e31540c5bf3f5c75555"
+  }
+}

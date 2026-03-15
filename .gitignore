@@ -1,0 +1,17 @@
+# ───── Backend ─────
+backend/node_modules/
+backend/.env
+backend/.tmp/
+backend/.cache/
+backend/dist/
+backend/build/
+backend/exports/
+
+# ───── Frontend ─────
+frontend/node_modules/
+frontend/.env
+frontend/dist/
+
+# ───── Sistema ─────
+.DS_Store
+Thumbs.db

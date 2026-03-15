@@ -1,0 +1,123 @@
+body{
+    width: 90vw;
+    height: 97vh;
+    background: #2A7B9B;
+    background: linear-gradient(90deg,rgba(42, 123, 155, 1) 0%, rgba(87, 199, 133, 1) 50%, rgba(237, 221, 83, 1) 100%);
+}
+
+.App {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;   
+    align-items: center;     
+}
+
+.container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 80px;
+    place-items: center;
+}
+
+.articule{
+    text-align: center;
+    width: 300px;
+    border-radius: 10px;
+    background-color: rgba(35, 35, 35, 0.2) !important;
+}
+
+img.cuadro {
+    width: 200px;
+    height: 250px;
+    border-radius: 10px;
+}
+
+.contact {
+    width: 300px;
+    border-radius: 10px;
+    background-color: rgba(35, 35, 35, 0.2);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 20px 0;
+    /* Quitamos height fija para que crezca con los mensajes */
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+input {
+    width: 200px;
+    height: 30px;
+    border-radius: 5px;
+    padding: 5px;
+    margin: 10px 0;
+}
+
+button {
+    cursor: pointer;
+    width: 150px;
+    height: 30px;
+    border-radius: 5px;
+    border: none;
+    background-color: #2e2aaa;
+    color: #ffffff;
+    padding: 5px;
+    margin-top: 20px;
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background-color: #6c6aaa;
+}
+
+.btdescargar{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    width: 150px;
+    height: 30px;
+    border-radius: 5px;
+    border: none;
+    background-color: #184150;
+    color: #ffffff;
+    padding: 5px;
+    margin-top: 20px;
+}
+
+/* ── Mensajes de estado ── */
+.status-msg {
+    width: 220px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin: 12px 0 0 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.status-msg.loading {
+    background-color: rgb(255, 193, 7);
+    color: #fff8e1;
+    border: 1px solid rgba(206, 172, 70, 0.6);
+}
+
+.status-msg.success {
+    background-color: rgba(40, 167, 137, 0.959);
+    color: #e8f5e9;
+    border: 1px solid rgba(71, 215, 182, 0.959);
+}
+
+.status-msg.error {
+    background-color: rgba(220, 53, 70, 0.81);
+    color: #fce4e4;
+    border: 1px solid rgb(234, 90, 105);
+}

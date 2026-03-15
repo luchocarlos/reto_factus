@@ -1,0 +1,6 @@
+{
+  "auth": "https://api-sandbox.factus.com.co/oauth/token",
+  "numberingRanges": "https://api-sandbox.factus.com.co/v1/numbering-ranges",
+  "validateBill": "https://api-sandbox.factus.com.co/v1/bills/validate",
+  "downloadBill": "https://api-sandbox.factus.com.co/v1/bills/download-pdf"
+}
