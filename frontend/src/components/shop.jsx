@@ -26,7 +26,7 @@ export default function Shop() {
         };
                                                                                    // Enviar datos a Strapi
         try {
-            const response = await fetch('http://localhost:1337/api/factus/generar', {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/factus/generar`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(orden)
