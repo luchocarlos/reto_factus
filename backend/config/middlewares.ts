@@ -8,8 +8,8 @@ export default [
     config: {
       origin: [
         'http://localhost:5173',
-        'https://reto-factus-six.vercel.app',   // configuracion para frontend en vercel
-      ].filter(Boolean),
+        'https://reto-factus-six.vercel.app',
+      ],
       headers: ['Content-Type', 'Authorization'],
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     },

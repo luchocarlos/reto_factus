@@ -10,8 +10,8 @@ exports.default = [
         config: {
             origin: [
                 'http://localhost:5173',
-                process.env.FRONTEND_URL || '', //ajuste para deploy en Vercel
-            ].filter(Boolean),
+                'https://reto-factus-six.vercel.app',
+            ],
             headers: ['Content-Type', 'Authorization'],
             methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         },
