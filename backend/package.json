@@ -11,13 +11,17 @@
     "strapi": "strapi"
   },
   "dependencies": {
-    "@strapi/plugin-cloud": "5.33.3",
-    "@strapi/plugin-users-permissions": "5.33.3",
-    "@strapi/strapi": "5.33.3",
-    "esbuild": "^0.25.0",
-    "fs-extra": "^10.0.0",
-    "mime-types": "^2.1.27"
-  },
+  "@strapi/plugin-cloud": "5.33.3",
+  "@strapi/plugin-users-permissions": "5.33.3",
+  "@strapi/strapi": "5.33.3",
+  "esbuild": "^0.25.0",
+  "fs-extra": "^10.0.0",
+  "mime-types": "^2.1.27",
+  "react": "^18.0.0",
+  "react-dom": "^18.0.0",
+  "react-router-dom": "^6.0.0",
+  "styled-components": "^6.0.0"
+},
   "devDependencies": {
     "@types/koa": "^3.0.1",
     "@types/node": "^20",
