@@ -1,15 +1,59 @@
 body{
     width: 90vw;
     height: 97vh;
-    background: #2A7B9B;
-    background: linear-gradient(90deg,rgba(42, 123, 155, 1) 0%, rgba(87, 199, 133, 1) 50%, rgba(237, 221, 83, 1) 100%);
+    background-color: #F5F5DC;
 }
 
 .App {
     min-height: 100vh;
     display: flex;
     justify-content: center;   
-    align-items: center;     
+    align-items: flex-start;
+    padding: 20px 0;
+}
+
+/* ── Encabezado superior ── */
+.page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 30px;
+}
+
+.header {
+    text-align: center;
+    color: #232323;
+}
+
+.header h2 {
+    margin: 0 0 5px 0;
+}
+
+.header p {
+    margin: 0;
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+/* ── Pestañas Factura / Nota Crédito ── */
+.tabs {
+    display: flex;
+    gap: 10px;
+}
+
+.tabs .tab {
+    width: 150px;
+    height: 36px;
+    margin: 0;
+    background-color: #EAE5CA;
+    color: #232323;
+    font-weight: 700;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.tabs .tab.active {
+    background-color: #2e2aaa;
+    color: #ffffff;
 }
 
 .container {
@@ -23,7 +67,7 @@ body{
     text-align: center;
     width: 300px;
     border-radius: 10px;
-    background-color: rgba(35, 35, 35, 0.2) !important;
+    background-color: #EAE5CA;
 }
 
 img.cuadro {
@@ -33,22 +77,66 @@ img.cuadro {
 }
 
 .contact {
-    width: 300px;
+    width: 620px;
     border-radius: 10px;
-    background-color: rgba(35, 35, 35, 0.2);
+    background-color: #EAE5CA;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    padding: 20px 0;
+    padding: 20px;
     /* Quitamos height fija para que crezca con los mensajes */
 }
 
+/* ── Formulario en 2 secciones ── */
 .form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    align-items: start;
+    justify-items: center;
+    width: 100%;
+    padding: 0 10px;
+    box-sizing: border-box;
+}
+
+.form-section {
     display: flex;
     flex-direction: column;
     align-items: center;
     width: 100%;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 0;
+}
+
+.form-section legend {
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 0 6px;
+}
+
+.resumen {
+    width: 100%;
+    font-size: 0.8rem;
+    text-align: left;
+    padding: 0 5px;
+}
+
+.resumen ul {
+    margin: 5px 0;
+    padding-left: 18px;
+}
+
+.resumen .total {
+    font-weight: 700;
+    margin: 8px 0 0 0;
+}
+
+/* mensajes abarcan las 2 columnas */
+.form > .status-msg {
+    grid-column: 1 / -1;
 }
 
 input {
@@ -57,6 +145,66 @@ input {
     border-radius: 5px;
     padding: 5px;
     margin: 10px 0;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background-color: #FBFAF4;
+}
+
+select {
+    width: 210px;
+    height: 30px;
+    border-radius: 5px;
+    padding: 5px;
+    margin: 10px 0;
+    border: none;
+    background-color: #FBFAF4;
+}
+
+/* aviso debajo del boton */
+.hint {
+    margin: 8px 0 0 0;
+    font-size: 0.75rem;
+    text-align: center;
+    color: #6b5b2e;
+}
+
+/* ── Lista de articulos con checkbox ── */
+.lista-articulos {
+    list-style: none;
+    padding: 0 15px 15px 15px;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.item-articulo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background-color: #E6E0C2;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+}
+
+.item-articulo label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.item-articulo input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+}
+
+.item-articulo span {
+    font-weight: 700;
+    white-space: nowrap;
 }
 
 button {
@@ -94,7 +242,9 @@ button:disabled {
 
 /* ── Mensajes de estado ── */
 .status-msg {
-    width: 220px;
+    width: 100%;
+    max-width: 560px;
+    box-sizing: border-box;
     padding: 8px 12px;
     border-radius: 8px;
     margin: 12px 0 0 0;
@@ -102,6 +252,7 @@ button:disabled {
     font-weight: 600;
     text-align: center;
     line-height: 1.4;
+    overflow-wrap: anywhere;
 }
 
 .status-msg.loading {
