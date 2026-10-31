@@ -9,6 +9,16 @@ module.exports = {
         policies: [],    // Sin validaciones adicionales
         middlewares: []  // Sin pre-procesadores
       }
+    },
+    {
+      method: 'POST',
+      path: '/factus/nota-credito',
+      handler: 'factus.generarNotaCredito',
+      config: {
+        auth: false,
+        policies: [],
+        middlewares: []
+      }
     }
   ]
 };

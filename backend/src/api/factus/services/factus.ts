@@ -1,13 +1,336 @@
+export type ItemOrden = {
+  code: string;
+  name: string;
+  price: number;
+  quantity: number;
+  unit_measure_code?: string;
+  standard_code?: string;
+  discount_rate?: number | string;
+  taxes?: Array<{ code: string; rate: string | number }>;
+};
+
 export type Orden = {                   //datos para construir la factura
   customer: {
     identification: string;
+    documentType: string;   // cc | nit
+    dv?: string;            // digito de verificacion (solo NIT)
     name: string;
     address: string;
     email: string;
     phone: string;
+    identification_document_code?: string; // codigo de documento para v2
+    legal_organization_code?: string;     // tipo organizacion
+    tribute_code?: string;                // tributo
+    municipality_code?: string;
+    country_code?: string;
+    responsibilities?: string[];
+    company?: string;
+    trade_name?: string;
+    names?: string;
   };
-  item: { code: string; quantity: number }[];
+  paymentMethod: string;   // efectivo | tarjeta
+  paymentForm?: string;    // forma de pago (1 contado, 2 credito)
+  item: ItemOrden[];
+  reference_code?: string;
+  numbering_range_id?: number;
+  observation?: string;
+  operation_type?: string;
+  document?: string;
 };
+
+export type NotaCredito = {
+  reference_code?: string;
+  correction_concept_code: string; // codigo de correccion
+  customization_id?: string; // 20 por defecto
+  bill_number?: string;
+  numbering_range_id?: number;
+  observation?: string;
+  payment_details?: Array<{
+    payment_form: string;
+    payment_method_code: string;
+    reference_code?: string;
+    amount: string;
+    due_date?: string;
+  }>;
+  customer: {
+    identification_document_code?: string;
+    identification: string;
+    dv?: string;
+    company?: string;
+    trade_name?: string;
+    names?: string;
+    address?: string;
+    email?: string;
+    phone?: string;
+    legal_organization_code?: string;
+    tribute_code?: string;
+    country_code?: string;
+    responsibilities?: string[];
+    municipality_code?: string;
+    documentType?: string;
+    name?: string;
+  };
+  items: ItemOrden[];
+};
+
+export type TipoRango = 'factura' | 'nota-credito';
+
+// mapeo para v2
+const DOCUMENT_CODES_V2: Record<string, string> = {
+  cc:  "13",   // cedula de ciudadania
+  nit: "31",   // NIT
+};
+
+const PAYMENT_METHOD_CODES_V2: Record<string, string> = {
+  efectivo: "10",   // efectivo
+  tarjeta:  "48",   // tarjeta de credito
+};
+
+const IVA_RATE = 19;
+const UNIT_MEASURE_CODE = "94";          // unidad (comun en v2)
+const STANDARD_CODE = "999";             // estandar de adopcion del contribuyente
+const MUNICIPALITY_CODE = "11001";       // Bogota D.C. (codigo correcto segun DIVIPOLA)
+const DEFAULT_TRIBUTE_CODE = "ZZ";       // no aplica
+const DEFAULT_LEGAL_ORG_NATURAL = "2";   // persona natural
+const DEFAULT_LEGAL_ORG_JURIDICA = "1";  // persona juridica
+
+function debugLog(...args: unknown[]) {
+  if (process.env.FACTUS_DEBUG === 'true') {
+    console.log('[factus]', ...args);
+  }
+}
+
+const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+const money = (value: number) => round2(value).toFixed(2);
+
+export function calcularTotales(items: ItemOrden[], ivaRate: number = IVA_RATE) {
+  let subtotal = 0;
+  let impuestos = 0;
+
+  for (const item of items) {
+    const cantidad = Number(item.quantity) || 0;
+    const precio = Number(item.price) || 0;
+    const descuento = Number(item.discount_rate ?? 0) || 0;
+    const base = round2(precio * cantidad * (1 - descuento / 100));
+    const tasa = item.taxes && item.taxes.length > 0
+      ? item.taxes.reduce((sum, tax) => sum + (Number(tax.rate) || 0), 0)
+      : ivaRate;
+
+    subtotal += base;
+    impuestos += round2(base * (tasa / 100));
+  }
+
+  subtotal = round2(subtotal);
+  impuestos = round2(impuestos);
+
+  return { subtotal, impuestos, total: round2(subtotal + impuestos) };
+}
+
+function normalizarTexto(value: unknown): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+export function seleccionarRangoNumeracion(rangos: any[], tipo: TipoRango): any | undefined {
+  const documentos = rangos.map((rango) => ({
+    rango,
+    texto: normalizarTexto(
+      rango?.document ?? rango?.document_type ?? rango?.name ?? rango?.description
+    ),
+  }));
+
+  if (tipo === 'factura') {
+    return documentos.find(({ texto }) => texto.includes('factura'))?.rango;
+  }
+
+  return documentos.find(({ texto }) => texto.includes('nota') && texto.includes('credito'))?.rango;
+}
+
+function fechaVencimiento(dias: number): string {
+  const fecha = new Date();
+  fecha.setUTCDate(fecha.getUTCDate() + dias);
+  return fecha.toISOString().slice(0, 10);
+}
+
+function construirCliente(customer: Orden['customer'] | NotaCredito['customer']) {
+  const documentType = (customer.documentType || 'cc').toLowerCase();
+  const isNit = documentType === 'nit';
+  const identificationDocumentCode =
+    customer.identification_document_code || DOCUMENT_CODES_V2[documentType] || DOCUMENT_CODES_V2.cc;
+
+  const cliente: Record<string, any> = {
+    identification_document_code: identificationDocumentCode,
+    identification: customer.identification,
+    legal_organization_code:
+      customer.legal_organization_code ||
+      (isNit ? DEFAULT_LEGAL_ORG_JURIDICA : DEFAULT_LEGAL_ORG_NATURAL),
+    tribute_code: customer.tribute_code || DEFAULT_TRIBUTE_CODE,
+    municipality_code: customer.municipality_code || MUNICIPALITY_CODE,
+    country_code: customer.country_code || "CO",
+  };
+
+  if (customer.address) cliente.address = customer.address;
+  if (customer.email) cliente.email = customer.email;
+  if (customer.phone) cliente.phone = customer.phone;
+
+  if (customer.responsibilities && Array.isArray(customer.responsibilities)) {
+    cliente.responsibilities = customer.responsibilities;
+  } else {
+    cliente.responsibilities = ["R-99-PN"];
+  }
+
+  if (isNit) {
+    cliente.company = customer.company || customer.name || '';
+    if (customer.trade_name) cliente.trade_name = customer.trade_name;
+    if (customer.dv) cliente.dv = customer.dv;
+  } else {
+    cliente.names = customer.names || customer.name || '';
+  }
+
+  return cliente;
+}
+
+function construirItems(items: ItemOrden[]) {
+  return items.map((item) => {
+    const precio = Number(item.price) || 0;
+    const descuento = Number(item.discount_rate ?? 0) || 0;
+
+    return {
+      code_reference: item.code,
+      name: item.name,
+      quantity: money(Number(item.quantity) || 0),
+      discount_rate: money(descuento),
+      price: money(precio),
+      unit_measure_code: item.unit_measure_code || UNIT_MEASURE_CODE,
+      standard_code: item.standard_code || STANDARD_CODE,
+      taxes: item.taxes && item.taxes.length > 0
+        ? item.taxes.map((tax) => ({ code: tax.code, rate: money(Number(tax.rate) || 0) }))
+        : [{ code: "01", rate: money(IVA_RATE) }],
+    };
+  });
+}
+
+export function construirPayloadFactura(orden: Orden, numberingRangeId?: number) {
+  const documentType = (orden.customer.documentType || 'cc').toLowerCase();
+  const paymentMethodCode =
+    PAYMENT_METHOD_CODES_V2[orden.paymentMethod] || PAYMENT_METHOD_CODES_V2.efectivo;
+  const paymentForm = orden.paymentForm || "1"; // 1 contado por defecto
+  const totales = calcularTotales(orden.item);
+
+  const detallePago: Record<string, any> = {
+    payment_form: paymentForm,
+    payment_method_code: paymentMethodCode,
+    amount: money(totales.total),
+  };
+
+  if (paymentForm === '2') {
+    detallePago.due_date = fechaVencimiento(30);
+  }
+
+  const payload: Record<string, any> = {
+    reference_code: orden.reference_code || `REF-${Date.now()}`,
+    document: orden.document || "01",
+    operation_type: orden.operation_type || "10",
+    observation: orden.observation || "Venta tienda online",
+    payment_details: [detallePago],
+    customer: construirCliente(orden.customer),
+    items: construirItems(orden.item),
+  };
+
+  if (numberingRangeId) {
+    payload.numbering_range_id = numberingRangeId;
+  }
+
+  return payload;
+}
+
+export function construirPayloadFacturaV1(orden: Orden, numberingRangeId?: number) {
+  const documentType = (orden.customer.documentType || 'cc').toLowerCase();
+  const isNit = documentType === 'nit';
+  const paymentMethodCode =
+    PAYMENT_METHOD_CODES_V2[orden.paymentMethod] || PAYMENT_METHOD_CODES_V2.efectivo;
+
+  const payload: Record<string, any> = {
+    document: "01",
+    numbering_range_id: numberingRangeId,
+    reference_code: orden.reference_code || `REF-${Date.now()}`,
+    operation_type: "10",
+    observation: orden.observation || "Venta tienda online",
+    payment_form: orden.paymentForm || "1",
+    payment_method_code: paymentMethodCode,
+    customer: {
+      identification_document_id: isNit ? 6 : 3,
+      identification: orden.customer.identification,
+      legal_organization_id: isNit ? 1 : 2,
+      tribute_id: 21,
+      municipality_id: 169,
+      address: orden.customer.address,
+      email: orden.customer.email,
+      phone: orden.customer.phone,
+    },
+    items: orden.item.map((it) => ({
+      code_reference: it.code,
+      name: it.name,
+      quantity: Number(it.quantity),
+      discount_rate: Number(it.discount_rate ?? 0) || 0,
+      price: Number(it.price),
+      tax_rate: money(IVA_RATE),
+      unit_measure_id: 70,
+      standard_code_id: 1,
+      is_excluded: 0,
+      tribute_id: 1,
+      withholding_taxes: [],
+    })),
+  };
+
+  if (isNit) {
+    payload.customer.company = orden.customer.company || orden.customer.name;
+    if (orden.customer.dv) payload.customer.dv = orden.customer.dv;
+  } else {
+    payload.customer.names = orden.customer.names || orden.customer.name;
+  }
+
+  return payload;
+}
+
+export function construirPayloadNotaCredito(nota: NotaCredito, numberingRangeId?: number) {
+  const totales = calcularTotales(nota.items);
+
+  const payload: Record<string, any> = {
+    reference_code: nota.reference_code || `NC-${Date.now()}`,
+    correction_concept_code: nota.correction_concept_code,
+    customization_id: nota.customization_id || "20",
+    observation: nota.observation || "Nota crédito",
+    payment_details: nota.payment_details || [
+      {
+        payment_form: "1",
+        payment_method_code: "10",
+        amount: money(totales.total),
+      },
+    ],
+    customer: construirCliente(nota.customer),
+    items: nota.items.map((item) => ({
+      code_reference: item.code,
+      name: item.name,
+      quantity: money(Number(item.quantity) || 0),
+      discount_rate: money(Number(item.discount_rate ?? 0) || 0),
+      price: money(Number(item.price) || 0),
+      unit_measure_code: item.unit_measure_code || UNIT_MEASURE_CODE,
+      standard_code: item.standard_code || STANDARD_CODE,
+      taxes: item.taxes && item.taxes.length > 0
+        ? item.taxes.map((tax) => ({ code: tax.code, rate: money(Number(tax.rate) || 0) }))
+        : [{ code: "01", rate: money(IVA_RATE) }],
+    })),
+  };
+
+  if (nota.bill_number) payload.bill_number = nota.bill_number;
+  if (numberingRangeId) payload.numbering_range_id = numberingRangeId;
+
+  return payload;
+}
 
 // ── 1. Obtener token OAuth ──────────────────────────────────────────────────
 async function getAccessToken(): Promise<string> {
@@ -31,12 +354,12 @@ async function getAccessToken(): Promise<string> {
   }
 
   const data = await res.json() as { access_token: string };
-  console.log('TOKEN OK:', data.access_token?.slice(0, 20) + '...');
+  debugLog('token obtenido');
   return data.access_token;
 }
 
-// ── 2. Obtener rango de numeración ────────────────────────────────────────── // consulta de rango de facturacion
-async function getNumberingRangeId(token: string): Promise<number> {
+// ── 2. Obtener rango de numeración ──────────────────────────────────────────
+async function getRangosNumeracion(token: string): Promise<any[]> {
   const res = await fetch(`${process.env.FACTUS_URL}/v1/numbering-ranges`, {
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -44,69 +367,43 @@ async function getNumberingRangeId(token: string): Promise<number> {
     },
   });
 
-  if (!res.ok) throw new Error(`Rangos falló (${res.status})`);
-  
-  const data = await res.json() as { data?: { data?: any[] } };   //busqueda del doble anidada
-  const rangos = data.data?.data;
-  
-  if (!rangos || rangos.length === 0) {
-    throw new Error('No hay rangos de numeración disponibles');
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Rangos de numeración falló (${res.status}): ${err}`);
   }
 
-  const facturaVenta =                                          //busqueda de rango del obj respuesta de factus
-    rangos.find((r: any) => r.id === 8) ??
-    rangos.find((r: any) =>
-      typeof r.document === 'string' &&
-      r.document.toLowerCase().includes('factura de venta')
-    );
+  const data = await res.json() as { data?: any };
+  const rangos = data.data?.data ?? data.data ?? [];
+  return Array.isArray(rangos) ? rangos : [];
+}
 
-  if (!facturaVenta) {
-    throw new Error('No hay rango de Factura de Venta activo');
+async function getNumberingRangeId(token: string, tipo: TipoRango): Promise<number> {
+  const rangos = await getRangosNumeracion(token);
+  const elegido = seleccionarRangoNumeracion(rangos, tipo);
+
+  if (elegido?.id) {
+    debugLog(`rango ${tipo} seleccionado:`, elegido.id, elegido.document);
+    return elegido.id;
   }
 
-  return facturaVenta.id;         // retorno de rango
+  const disponibles = rangos
+    .map((rango) => rango?.document ?? rango?.document_type ?? rango?.name)
+    .filter(Boolean)
+    .join(', ');
+
+  throw new Error(
+    `No hay rango de numeración activo para ${tipo}` +
+    (disponibles ? `. Disponibles: ${disponibles}` : '')
+  );
 }
 
 // ── 3. Crear y validar factura ──────────────────────────────────────────────
-async function crearFactura(token: string, orden: Orden, numberingRangeId: number): Promise<string> {
-  const payload = {                                               // creacion de la factura
-    document:            "01",         // tipo documento - 1 factura electrónica                              
-    numbering_range_id:  numberingRangeId,      //tango de numeracion
-    reference_code:      `REF-${Date.now()}`,  //codigo unico
-    observation:         "Venta tienda online", 
-    payment_method_code: "10",         // me todo de pago - 10 efectivo
-    customer: {                    //datos tomados en el formulario
-      identification:             orden.customer.identification,  
-      dv:                         null,    
-      company:                    "",
-      trade_name:                 "",
-      names:                      orden.customer.name,
-      address:                    orden.customer.address,
-      email:                      orden.customer.email,
-      phone:                      orden.customer.phone,
-      identification_document_id: 3,   // tipo de documento - 3 cedula
-      legal_organization_id:      "2", // tipo de legal - 2 persona Natural 
-      tribute_id:                 "21", // id tributario - iva - 21 no aplica
-      municipality_id:            "169" // mincipios - 169 Bogotá
-    },
-    items: orden.item.map((it: any) => ({
-      code_reference:   it.code,   // id del producto o servicio - personalizado
-      name:             "Cuadro decorativo",
-      quantity:         it.quantity, // can tidad
-      discount_rate:    0,           // descuento
-      price:            50000,       //precio 
-      tax_rate:         "19.00",   // iva
-      unit_measure_id:  70,         // unidad de medida - 70 cantidad
-      standard_code_id: 1,           // Estándar de adopción del contribuyente
-      is_excluded:      0,           //excluye iva - 0 no
-      tribute_id:       1,           // impuestos - 1 iva sobre la venta
-      withholding_taxes: []          // informacion de retencion a la fuente del vendedor
-    }))
-  };
+async function crearFactura(token: string, orden: Orden, numberingRangeId?: number): Promise<string> {
+  const payload = construirPayloadFactura(orden, numberingRangeId);
 
-  console.log('PAYLOAD:', JSON.stringify(payload, null, 2));   // factura tipo json para la api
+  debugLog('payload factura v2', JSON.stringify(payload));
 
-  const res = await fetch(`${process.env.FACTUS_URL}/v1/bills/validate`, {
+  let res = await fetch(`${process.env.FACTUS_URL}/v2/bills/validate`, {
     method:  'POST',
     headers: {
       'Content-Type':  'application/json',
@@ -117,21 +414,37 @@ async function crearFactura(token: string, orden: Orden, numberingRangeId: numbe
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Crear factura falló (${res.status}): ${err}`);
+    const v2Error = await res.text();
+    debugLog('v2 falló, intentando v1:', v2Error);
+
+    res = await fetch(`${process.env.FACTUS_URL}/v1/bills/validate`, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${token}`,
+        'Accept':        'application/json',
+      },
+      body: JSON.stringify(construirPayloadFacturaV1(orden, numberingRangeId)),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Crear factura falló (${res.status}): ${err}. Detalle v2: ${v2Error}`);
+    }
   }
 
   const data: any = await res.json();
-  console.log('FACTURA CREADA:', JSON.stringify(data.data?.bill));
+  debugLog('factura creada', data.data?.number ?? data.data?.bill?.number ?? data.data?.bill_number);
 
-  const billNumber = data.data?.bill?.number;
+  const billNumber = data.data?.number ?? data.data?.bill?.number ?? data.data?.bill_number;
   if (!billNumber) throw new Error('No se recibió número de factura');
-  return billNumber;                                                  // retorno del dato para descagar factura
+  return billNumber;
 }
 
 // ── 4. Descargar PDF ────────────────────────────────────────────────────────
 async function descargarPDF(token: string, billNumber: string): Promise<Buffer> {
-  const res = await fetch(`${process.env.FACTUS_URL}/v1/bills/download-pdf/${billNumber}`, {
+  // Intentar v2 primero
+  let res = await fetch(`${process.env.FACTUS_URL}/v2/bills/download-pdf/${billNumber}`, {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Accept':        'application/json',
@@ -139,27 +452,117 @@ async function descargarPDF(token: string, billNumber: string): Promise<Buffer> 
   });
 
   if (!res.ok) {
+    res = await fetch(`${process.env.FACTUS_URL}/v1/bills/download-pdf/${billNumber}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept':        'application/json',
+      },
+    });
+  }
+
+  if (!res.ok) {
     const err = await res.text();
     throw new Error(`Descarga PDF falló (${res.status}): ${err}`);
   }
 
-  const data = await res.json() as { data?: { pdf_base_64_encoded?: string } };
-  const base64 = data.data?.pdf_base_64_encoded;
+  const data = await res.json() as { data?: { pdf_base_64_encoded?: string, pdf_base64?: string } };
+  const base64 = data.data?.pdf_base_64_encoded || data.data?.pdf_base64;
   if (!base64) throw new Error('Factus no retornó PDF en base64');
 
-  console.log('PDF OK, tamaño base64:', base64.length);
+  debugLog('PDF descargado');
   return Buffer.from(base64, 'base64');
 }
 
-// ── Export principal ────────────────────────────────────────────────────────
+async function crearNotaCredito(token: string, nota: NotaCredito, numberingRangeId?: number): Promise<string> {
+  const payload = construirPayloadNotaCredito(nota, numberingRangeId);
+
+  debugLog('payload nota crédito v2', JSON.stringify(payload));
+
+  const res = await fetch(`${process.env.FACTUS_URL}/v2/credit-notes/validate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Crear nota crédito falló (${res.status}): ${err}`);
+  }
+
+  const data: any = await res.json();
+  debugLog('nota crédito creada', data.data?.number ?? data.data?.bill?.number ?? data.data?.bill_number);
+
+  const billNumber = data.data?.number ?? data.data?.bill?.number ?? data.data?.bill_number;
+  if (!billNumber) throw new Error('No se recibió número de nota crédito');
+  return billNumber;
+}
+
+async function descargarPDFNotaCredito(token: string, billNumber: string): Promise<Buffer> {
+  let res = await fetch(`${process.env.FACTUS_URL}/v2/credit-notes/download-pdf/${billNumber}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    res = await fetch(`${process.env.FACTUS_URL}/v1/credit-notes/download-pdf/${billNumber}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+      },
+    });
+  }
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Descarga PDF nota crédito falló (${res.status}): ${err}`);
+  }
+
+  const data = await res.json() as { data?: { pdf_base_64_encoded?: string, pdf_base64?: string } };
+  const base64 = data.data?.pdf_base_64_encoded || data.data?.pdf_base64;
+  if (!base64) throw new Error('Factus no retornó PDF en base64');
+
+  debugLog('PDF nota crédito descargado');
+  return Buffer.from(base64, 'base64');
+}
+
 export const procesarFactura = async (orden: Orden) => {
-  const token            = await getAccessToken();
-  const numberingRangeId = await getNumberingRangeId(token);
-  const billNumber       = await crearFactura(token, orden, numberingRangeId);
-  const pdfData          = await descargarPDF(token, billNumber);
+  const token = await getAccessToken();
+  let numberingRangeId = orden.numbering_range_id;
+
+  if (!numberingRangeId) {
+    try {
+      numberingRangeId = await getNumberingRangeId(token, 'factura');
+    } catch (error: any) {
+      console.warn('FACTUS WARN:', error.message);
+      numberingRangeId = undefined;
+    }
+  }
+
+  const billNumber = await crearFactura(token, orden, numberingRangeId);
+  const pdfData = await descargarPDF(token, billNumber);
 
   return {
-    fileName: `factura_${billNumber}.pdf`,                    // descagar directa
+    fileName: `factura_${billNumber}.pdf`,
+    pdfData
+  };
+};
+
+export const procesarNotaCredito = async (nota: NotaCredito) => {
+  const token = await getAccessToken();
+  const numberingRangeId =
+    nota.numbering_range_id || await getNumberingRangeId(token, 'nota-credito');
+
+  const billNumber = await crearNotaCredito(token, nota, numberingRangeId);
+  const pdfData = await descargarPDFNotaCredito(token, billNumber);
+
+  return {
+    fileName: `nota_credito_${billNumber}.pdf`,
     pdfData
   };
 };
