@@ -171,6 +171,10 @@ npm test
 
 ### Backend en Render
 
+Comando de build: `npm install && npm run build`. Comando de inicio: `npm run start`.
+
+`backend/dist` ya no se versiona, así que Render debe compilar en cada despliegue.
+
 Variables mínimas: las de Factus, `APP_KEYS`, `API_TOKEN_SALT`, `ADMIN_JWT_SECRET`, `TRANSFER_TOKEN_SALT`, `JWT_SECRET` y `DATABASE_FILENAME`.
 
 > SQLite en Render es efímero: si el backend se reinicia, la base de datos se pierde. Para este reto Strapi solo actúa como proxy, así que no afecta la facturación. Para persistencia real usa PostgreSQL.
