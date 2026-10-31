@@ -2,7 +2,7 @@ export default () => ({
   connection: {
     client: 'sqlite',
     connection: {
-      filename: ':memory:',
+      filename: process.env.DATABASE_FILENAME || ':memory:',
     },
     useNullAsDefault: true,
   },

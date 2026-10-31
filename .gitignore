@@ -4,6 +4,7 @@ backend/.env
 backend/.tmp/
 backend/.cache/
 backend/build/
+backend/dist/
 backend/exports/
 
 # ───── Frontend ─────
