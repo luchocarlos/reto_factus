@@ -1,5 +1,6 @@
 export type ItemOrden = {
   code: string;
+  code_reference?: string;
   name: string;
   price: number;
   quantity: number;
@@ -204,7 +205,7 @@ function construirItems(items: ItemOrden[]) {
     const precioNeto = round2(precio / (1 + tasa / 100));
 
     return {
-      code_reference: item.code,
+      code_reference: item.code || item.code_reference,
       name: item.name,
       quantity: money(Number(item.quantity) || 0),
       discount_rate: money(descuento),
@@ -283,7 +284,7 @@ export function construirPayloadFacturaV1(orden: Orden, numberingRangeId?: numbe
         : IVA_RATE;
 
       return {
-        code_reference: it.code,
+        code_reference: it.code || it.code_reference,
         name: it.name,
         quantity: Number(it.quantity),
         discount_rate: descuento,
@@ -445,7 +446,7 @@ async function crearFactura(token: string, orden: Orden, numberingRangeId?: numb
 // ── 4. Descargar PDF ────────────────────────────────────────────────────────
 async function descargarPDF(token: string, billNumber: string): Promise<Buffer> {
   // Intentar v2 primero
-  let res = await fetch(`${process.env.FACTUS_URL}/v2/bills/download-pdf/${billNumber}`, {
+  let res = await fetch(`${process.env.FACTUS_URL}/v2/bills/${billNumber}/download-pdf`, {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Accept':        'application/json',
@@ -503,7 +504,7 @@ async function crearNotaCredito(token: string, nota: NotaCredito, numberingRange
 }
 
 async function descargarPDFNotaCredito(token: string, billNumber: string): Promise<Buffer> {
-  let res = await fetch(`${process.env.FACTUS_URL}/v2/credit-notes/download-pdf/${billNumber}`, {
+  let res = await fetch(`${process.env.FACTUS_URL}/v2/credit-notes/${billNumber}/download-pdf`, {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Accept': 'application/json',

@@ -178,7 +178,7 @@ export default function Shop() {
 
         const items = ARTICULOS
             .filter((art) => ncSelected[art.code])
-            .map((art) => ({ code_reference: art.code, name: art.name, price: art.price, quantity: 1 }));
+            .map((art) => ({ code: art.code, name: art.name, price: art.price, quantity: 1 }));
 
         if (items.length === 0) return;
 
