@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Reto Factus
 
 Demo full stack de facturación electrónica en Colombia usando la API de [Factus](https://www.factus.com.co/), con panel de compra y generación de nota crédito.
