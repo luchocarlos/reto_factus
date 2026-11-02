@@ -104,6 +104,57 @@ function debugLog(...args: unknown[]) {
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 const money = (value: number) => round2(value).toFixed(2);
 
+function nuevoReferenceCode(prefijo: string): string {
+  const aleatorio = Math.random().toString(36).slice(2, 8);
+  return `${prefijo}-${Date.now()}-${aleatorio}`;
+}
+
+export class FactusApiError extends Error {
+  status: number;
+  details?: unknown;
+
+  constructor(message: string, status = 502, details?: unknown) {
+    super(message);
+    this.name = 'FactusApiError';
+    this.status = status;
+    this.details = details;
+  }
+}
+
+// Convierte la respuesta de error de Factus en un error con el status HTTP
+// original (400, 409, 422, etc.) para que el frontend pueda mostrar el motivo.
+async function leerErrorFactus(res: Response, contexto: string): Promise<FactusApiError> {
+  const raw = await res.text();
+  let mensaje = raw;
+  let details: unknown = raw;
+
+  try {
+    const json: any = JSON.parse(raw);
+    details = json;
+    const candidato = json.message ?? json.error ?? json.errors ?? raw;
+    mensaje = typeof candidato === 'string' ? candidato : JSON.stringify(candidato);
+  } catch {
+    // La respuesta no era JSON; dejamos el texto plano.
+  }
+
+  const status = res.status >= 400 && res.status < 500 ? res.status : 502;
+  return new FactusApiError(
+    `${contexto} (${res.status}): ${mensaje || res.statusText}`,
+    status,
+    details
+  );
+}
+
+function extraerNumeroDocumento(data: any): string | undefined {
+  return data?.data?.number
+    ?? data?.data?.bill?.number
+    ?? data?.data?.credit_note?.number
+    ?? data?.data?.credit_note_number
+    ?? data?.data?.bill_number
+    ?? data?.number
+    ?? data?.bill_number;
+}
+
 export function calcularTotales(items: ItemOrden[], ivaRate: number = IVA_RATE) {
   let subtotal = 0;
   let total = 0;
@@ -237,7 +288,7 @@ export function construirPayloadFactura(orden: Orden, numberingRangeId?: number)
   }
 
   const payload: Record<string, any> = {
-    reference_code: orden.reference_code || `REF-${Date.now()}`,
+    reference_code: orden.reference_code || nuevoReferenceCode('REF'),
     document: orden.document || "01",
     operation_type: orden.operation_type || "10",
     observation: orden.observation || "Venta tienda online",
@@ -262,7 +313,7 @@ export function construirPayloadFacturaV1(orden: Orden, numberingRangeId?: numbe
   const payload: Record<string, any> = {
     document: "01",
     numbering_range_id: numberingRangeId,
-    reference_code: orden.reference_code || `REF-${Date.now()}`,
+    reference_code: orden.reference_code || nuevoReferenceCode('REF'),
     operation_type: "10",
     observation: orden.observation || "Venta tienda online",
     payment_form: orden.paymentForm || "1",
@@ -312,23 +363,41 @@ export function construirPayloadFacturaV1(orden: Orden, numberingRangeId?: numbe
 export function construirPayloadNotaCredito(nota: NotaCredito, numberingRangeId?: number) {
   const totales = calcularTotales(nota.items);
 
+  const paymentDetails = (nota.payment_details && nota.payment_details.length > 0
+    ? nota.payment_details
+    : [
+        {
+          payment_form: "1",
+          payment_method_code: "10",
+          amount: money(totales.total),
+        },
+      ]
+  ).map((pago) => {
+    const detalle: Record<string, any> = {
+      payment_form: String(pago.payment_form),
+      payment_method_code: String(pago.payment_method_code),
+      amount: typeof pago.amount === 'string'
+        ? pago.amount
+        : money(Number(pago.amount) || totales.total),
+    };
+
+    if (pago.reference_code) detalle.reference_code = String(pago.reference_code);
+    if (pago.due_date) detalle.due_date = String(pago.due_date);
+
+    return detalle;
+  });
+
   const payload: Record<string, any> = {
-    reference_code: nota.reference_code || `NC-${Date.now()}`,
-    correction_concept_code: nota.correction_concept_code,
-    customization_id: nota.customization_id || "20",
+    reference_code: nota.reference_code || nuevoReferenceCode('NC'),
+    correction_concept_code: String(nota.correction_concept_code),
+    customization_id: String(nota.customization_id || "20"),
     observation: nota.observation || "Nota crédito",
-    payment_details: nota.payment_details || [
-      {
-        payment_form: "1",
-        payment_method_code: "10",
-        amount: money(totales.total),
-      },
-    ],
+    payment_details: paymentDetails,
     customer: construirCliente(nota.customer),
     items: construirItems(nota.items),
   };
 
-  if (nota.bill_number) payload.bill_number = nota.bill_number;
+  if (nota.bill_number) payload.bill_number = String(nota.bill_number);
   if (numberingRangeId) payload.numbering_range_id = numberingRangeId;
 
   return payload;
@@ -351,8 +420,8 @@ async function getAccessToken(): Promise<string> {
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Auth Factus falló (${res.status}): ${err}`);
+    const error = await leerErrorFactus(res, 'Auth Factus falló');
+    throw new FactusApiError(error.message, 502, error.details);
   }
 
   const data = await res.json() as { access_token: string };
@@ -370,8 +439,8 @@ async function getRangosNumeracion(token: string): Promise<any[]> {
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Rangos de numeración falló (${res.status}): ${err}`);
+    const error = await leerErrorFactus(res, 'Rangos de numeración falló');
+    throw new FactusApiError(error.message, 502, error.details);
   }
 
   const data = await res.json() as { data?: any };
@@ -416,8 +485,8 @@ async function crearFactura(token: string, orden: Orden, numberingRangeId?: numb
   });
 
   if (!res.ok) {
-    const v2Error = await res.text();
-    debugLog('v2 falló, intentando v1:', v2Error);
+    const v2Error = await leerErrorFactus(res, 'Crear factura v2 falló');
+    debugLog('v2 falló, intentando v1:', v2Error.message);
 
     res = await fetch(`${process.env.FACTUS_URL}/v1/bills/validate`, {
       method:  'POST',
@@ -430,16 +499,20 @@ async function crearFactura(token: string, orden: Orden, numberingRangeId?: numb
     });
 
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Crear factura falló (${res.status}): ${err}. Detalle v2: ${v2Error}`);
+      const v1Error = await leerErrorFactus(res, 'Crear factura v1 falló');
+      throw new FactusApiError(
+        `${v1Error.message}. Detalle v2: ${v2Error.message}`,
+        v1Error.status,
+        v1Error.details
+      );
     }
   }
 
   const data: any = await res.json();
-  debugLog('factura creada', data.data?.number ?? data.data?.bill?.number ?? data.data?.bill_number);
+  const billNumber = extraerNumeroDocumento(data);
+  debugLog('factura creada', billNumber);
 
-  const billNumber = data.data?.number ?? data.data?.bill?.number ?? data.data?.bill_number;
-  if (!billNumber) throw new Error('No se recibió número de factura');
+  if (!billNumber) throw new FactusApiError('No se recibió número de factura', 502, data);
   return billNumber;
 }
 
@@ -463,24 +536,19 @@ async function descargarPDF(token: string, billNumber: string): Promise<Buffer> 
   }
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Descarga PDF falló (${res.status}): ${err}`);
+    throw await leerErrorFactus(res, 'Descarga PDF falló');
   }
 
   const data = await res.json() as { data?: { pdf_base_64_encoded?: string, pdf_base64?: string } };
   const base64 = data.data?.pdf_base_64_encoded || data.data?.pdf_base64;
-  if (!base64) throw new Error('Factus no retornó PDF en base64');
+  if (!base64) throw new FactusApiError('Factus no retornó PDF en base64', 502, data);
 
   debugLog('PDF descargado');
   return Buffer.from(base64, 'base64');
 }
 
-async function crearNotaCredito(token: string, nota: NotaCredito, numberingRangeId?: number): Promise<string> {
-  const payload = construirPayloadNotaCredito(nota, numberingRangeId);
-
-  debugLog('payload nota crédito v2', JSON.stringify(payload));
-
-  const res = await fetch(`${process.env.FACTUS_URL}/v2/credit-notes/validate`, {
+async function enviarNotaCredito(token: string, payload: Record<string, any>): Promise<Response> {
+  return fetch(`${process.env.FACTUS_URL}/v2/credit-notes/validate`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -489,17 +557,51 @@ async function crearNotaCredito(token: string, nota: NotaCredito, numberingRange
     },
     body: JSON.stringify(payload),
   });
+}
+
+async function eliminarNotaCreditoNoValidada(token: string, referenceCode: string): Promise<void> {
+  const res = await fetch(
+    `${process.env.FACTUS_URL}/v2/credit-notes/reference/${encodeURIComponent(referenceCode)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+      },
+    }
+  );
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Crear nota crédito falló (${res.status}): ${err}`);
+    const error = await leerErrorFactus(res, 'Eliminar nota crédito no validada falló');
+    debugLog(error.message);
+  }
+}
+
+async function crearNotaCredito(token: string, nota: NotaCredito, numberingRangeId?: number): Promise<string> {
+  const payload = construirPayloadNotaCredito(nota, numberingRangeId);
+
+  debugLog('payload nota crédito v2', JSON.stringify(payload));
+
+  let res = await enviarNotaCredito(token, payload);
+
+  // Según la documentación de Factus, si queda un documento pendiente por
+  // enviar a la DIAN se debe eliminar por reference_code y volver a crear.
+  if (res.status === 409) {
+    const conflicto = await leerErrorFactus(res, 'Nota crédito en conflicto');
+    debugLog(conflicto.message);
+    await eliminarNotaCreditoNoValidada(token, payload.reference_code);
+    res = await enviarNotaCredito(token, payload);
+  }
+
+  if (!res.ok) {
+    throw await leerErrorFactus(res, 'Crear nota crédito falló');
   }
 
   const data: any = await res.json();
-  debugLog('nota crédito creada', data.data?.number ?? data.data?.bill?.number ?? data.data?.bill_number);
+  const billNumber = extraerNumeroDocumento(data);
+  debugLog('nota crédito creada', billNumber);
 
-  const billNumber = data.data?.number ?? data.data?.bill?.number ?? data.data?.bill_number;
-  if (!billNumber) throw new Error('No se recibió número de nota crédito');
+  if (!billNumber) throw new FactusApiError('No se recibió número de nota crédito', 502, data);
   return billNumber;
 }
 
@@ -521,13 +623,12 @@ async function descargarPDFNotaCredito(token: string, billNumber: string): Promi
   }
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Descarga PDF nota crédito falló (${res.status}): ${err}`);
+    throw await leerErrorFactus(res, 'Descarga PDF nota crédito falló');
   }
 
   const data = await res.json() as { data?: { pdf_base_64_encoded?: string, pdf_base64?: string } };
   const base64 = data.data?.pdf_base_64_encoded || data.data?.pdf_base64;
-  if (!base64) throw new Error('Factus no retornó PDF en base64');
+  if (!base64) throw new FactusApiError('Factus no retornó PDF en base64', 502, data);
 
   debugLog('PDF nota crédito descargado');
   return Buffer.from(base64, 'base64');

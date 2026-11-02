@@ -172,13 +172,46 @@ npm test
 
 ### Backend en Render
 
-Comando de build: `npm install && npm run build`. Comando de inicio: `npm run start`.
+Comando de build: `npm ci --include=dev && npm run build`. Comando de inicio: `npm run start`.
 
-`backend/dist` ya no se versiona, así que Render debe compilar en cada despliegue.
+`backend/dist` ya no se versiona, así que Render debe compilar en cada despliegue. El comando de build debe instalar también las dependencias de desarrollo (`--include=dev`): TypeScript es necesario para compilar el servidor y las rutas de Strapi.
+
+Configuración recomendada en Render:
+
+| Ajuste | Valor |
+| --- | --- |
+| Root Directory | `backend` |
+| Build Command | `npm ci --include=dev && npm run build` |
+| Start Command | `npm run start` |
+| Health Check Path | `/_health` |
+
+También puedes crear el servicio desde el archivo `render.yaml` de la raíz del repositorio.
 
 Variables mínimas: las de Factus, `APP_KEYS`, `API_TOKEN_SALT`, `ADMIN_JWT_SECRET`, `TRANSFER_TOKEN_SALT`, `JWT_SECRET` y `DATABASE_FILENAME`.
 
 > SQLite en Render es efímero: si el backend se reinicia, la base de datos se pierde. Para este reto Strapi solo actúa como proxy, así que no afecta la facturación. Para persistencia real usa PostgreSQL.
+
+### Verificar que el backend desplegado está actualizado
+
+El endpoint `GET /api/factus/estado` permite confirmar qué rutas están publicadas:
+
+```bash
+curl https://TU-BACKEND.onrender.com/api/factus/estado
+```
+
+Debe responder con `ok: true` y listar `POST /api/factus/nota-credito`. Si responde `404` o `405`, la instancia sigue ejecutando un build anterior.
+
+### Error 405 en `/api/factus/nota-credito`
+
+Un `405 Method Not Allowed` en esa ruta no viene de Factus: viene del backend desplegado. La causa es que Render está sirviendo un build viejo que solo registra `/api/factus/generar`. Para corregirlo:
+
+1. Verifica que el Root Directory del servicio sea `backend`.
+2. Usa el build command `npm ci --include=dev && npm run build`.
+3. Ejecuta un **Manual Deploy → Clear build cache & deploy** en Render.
+4. Confirma con `GET /api/factus/estado` y vuelve a probar la nota crédito.
+
+La ruta `POST /api/factus/nota-credito` ya existe en `backend/src/api/factus/routes/factus.ts`; el problema es que la instancia en producción no la tiene cargada.
+
 
 ### Frontend en Vercel
 

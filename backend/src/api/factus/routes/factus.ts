@@ -1,6 +1,16 @@
 module.exports = {
   routes: [
     {
+      method: 'GET',
+      path: '/factus/estado',
+      handler: 'factus.estado',
+      config: {
+        auth: false,
+        policies: [],
+        middlewares: []
+      }
+    },
+    {
       method: 'POST',    // metodo de consulta a la api
       path: '/factus/generar',  // endpoint de acceso POST
       handler: 'factus.generarYDescargar',  // medoto

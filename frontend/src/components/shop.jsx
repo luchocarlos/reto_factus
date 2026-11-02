@@ -30,12 +30,19 @@ function apiHeaders() {
 
 async function leerError(response) {
     const texto = await response.text();
+    let mensaje = texto || `Error HTTP ${response.status}`;
     try {
         const data = JSON.parse(texto);
-        return data.error || data.message || texto;
+        mensaje = data.error || data.message || mensaje;
     } catch {
-        return texto || `Error HTTP ${response.status}`;
+        // La respuesta no era JSON.
     }
+
+    if (response.status === 405) {
+        return 'El backend desplegado no tiene publicada la ruta de notas crédito (HTTP 405). Vuelve a desplegar el backend y verifica GET /api/factus/estado.';
+    }
+
+    return mensaje;
 }
 
 function descargarBlob(blob, nombre) {
