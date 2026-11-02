@@ -124,11 +124,11 @@ Genera una nota crédito asociada a una factura. Responde con el PDF.
 
 ## Convención de precios e IVA
 
-- `price` en los items es el **valor unitario sin IVA**.
+- `price` en los items es el **valor unitario final con IVA incluido** (lo que paga el cliente).
 - El IVA por defecto es **19%**.
-- `payment_details.amount` se calcula como **subtotal + impuestos**, es decir, el total que paga el cliente.
+- `payment_details.amount` es la suma de los precios finales con descuento aplicado.
 - Si un item trae `taxes`, se usan esas tasas; si no, se aplica 19%.
-- El fallback a v1 usa `price` sin IVA y `tax_rate` por separado (evita doble impuesto).
+- En v2 se envía a Factus el precio neto (`price / (1 + IVA)`) más el impuesto; en v1 se envía `price` tal cual porque v1 espera precios brutos. Así la factura y la nota crédito dan el mismo total.
 
 ## Rangos de numeración
 

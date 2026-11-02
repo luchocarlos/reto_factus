@@ -50,12 +50,12 @@ function crearNota(overrides: Partial<NotaCredito> = {}): NotaCredito {
 }
 
 describe('calcularTotales', () => {
-  it('calcula subtotal, IVA y total de un item', () => {
+  it('calcula base, IVA y total de un item con precio final', () => {
     const totales = calcularTotales([
       { code: 'A', name: 'A', price: 50000, quantity: 1 },
     ]);
 
-    expect(totales).toEqual({ subtotal: 50000, impuestos: 9500, total: 59500 });
+    expect(totales).toEqual({ subtotal: 42016.81, impuestos: 7983.19, total: 50000 });
   });
 
   it('suma varios items', () => {
@@ -64,7 +64,7 @@ describe('calcularTotales', () => {
       { code: 'B', name: 'B', price: 35000, quantity: 2 },
     ]);
 
-    expect(totales).toEqual({ subtotal: 120000, impuestos: 22800, total: 142800 });
+    expect(totales).toEqual({ subtotal: 100840.34, impuestos: 19159.66, total: 120000 });
   });
 
   it('aplica descuento y respeta impuestos personalizados', () => {
@@ -79,17 +79,17 @@ describe('calcularTotales', () => {
       },
     ]);
 
-    expect(totales).toEqual({ subtotal: 45000, impuestos: 2250, total: 47250 });
+    expect(totales).toEqual({ subtotal: 42857.14, impuestos: 2142.86, total: 45000 });
   });
 });
 
 describe('construirPayloadFactura', () => {
-  it('envía el monto del pago con IVA incluido y el precio unitario sin IVA', () => {
+  it('envía el total final y el precio neto (sin IVA) a Factus v2', () => {
     const payload = construirPayloadFactura(crearOrden(), 8);
 
     expect(payload.numbering_range_id).toBe(8);
-    expect(payload.payment_details[0].amount).toBe('59500.00');
-    expect(payload.items[0].price).toBe('50000.00');
+    expect(payload.payment_details[0].amount).toBe('50000.00');
+    expect(payload.items[0].price).toBe('42016.81');
     expect(payload.items[0].taxes[0]).toEqual({ code: '01', rate: '19.00' });
   });
 
@@ -136,21 +136,42 @@ describe('construirPayloadFactura', () => {
 });
 
 describe('construirPayloadFacturaV1', () => {
-  it('no multiplica el precio por IVA (evita doble impuesto)', () => {
-    const payload = construirPayloadFacturaV1(crearOrden(), 8);
+  it('envía el precio final con IVA incluido y coincide con el total de v2', () => {
+    const orden = crearOrden();
+    const payload = construirPayloadFacturaV1(orden, 8);
+    const totalV2 = calcularTotales(orden.item).total;
 
     expect(payload.items[0].price).toBe(50000);
     expect(payload.items[0].tax_rate).toBe('19.00');
+    expect(payload.items[0].price * payload.items[0].quantity).toBe(totalV2);
+  });
+
+  it('respeta impuestos personalizados sin alterar el precio final', () => {
+    const payload = construirPayloadFacturaV1(crearOrden({
+      item: [
+        {
+          code: 'A',
+          name: 'A',
+          price: 50000,
+          quantity: 1,
+          taxes: [{ code: '01', rate: 5 }],
+        },
+      ],
+    }));
+
+    expect(payload.items[0].price).toBe(50000);
+    expect(payload.items[0].tax_rate).toBe('5.00');
   });
 });
 
 describe('construirPayloadNotaCredito', () => {
-  it('envía monto con IVA, bill_number y rango de nota crédito', () => {
+  it('usa el mismo total y precio neto que la factura', () => {
     const payload = construirPayloadNotaCredito(crearNota(), 21);
 
     expect(payload.bill_number).toBe('SETP990002519');
     expect(payload.numbering_range_id).toBe(21);
-    expect(payload.payment_details[0].amount).toBe('59500.00');
+    expect(payload.payment_details[0].amount).toBe('50000.00');
+    expect(payload.items[0].price).toBe('42016.81');
     expect(payload.items[0].taxes[0]).toEqual({ code: '01', rate: '19.00' });
   });
 

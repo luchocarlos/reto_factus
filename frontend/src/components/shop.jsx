@@ -1,6 +1,6 @@
 
 import cuadro from "/images/cuadro.jpeg";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 const ARTICULOS = [
     { code: "CUADRO-01", name: "Cuadro decorativo", price: 50000 },
@@ -71,6 +71,7 @@ export default function Shop() {
     });
     const [status, setStatus] = useState("idle"); // estado para manejar el proceso de compra
     const [errorMsg, setErrorMsg] = useState("");
+    const enviandoFactura = useRef(false);
     
     // Nota credito
     const [ncForm, setNcForm] = useState({
@@ -93,6 +94,7 @@ export default function Shop() {
     });
     const [ncStatus, setNcStatus] = useState("idle");
     const [ncErrorMsg, setNcErrorMsg] = useState("");
+    const enviandoNota = useRef(false);
 
     function handleChange(e) {                                      //estado para manejar los cambios en el formulario
         setUseForm({ ...useForm, [e.target.name]: e.target.value });
@@ -126,6 +128,7 @@ export default function Shop() {
 
     async function handleSubmit(e) {                     //funcion de envio de datos al backend
         e.preventDefault();
+        if (enviandoFactura.current) return;
 
         const items = ARTICULOS
             .filter((art) => selected[art.code])          // solo los articulos marcados
@@ -133,6 +136,7 @@ export default function Shop() {
 
         if (items.length === 0) return;                 // sin articulos no se envia nada (boton deshabilitado)
 
+        enviandoFactura.current = true;
         setStatus("loading");
         setErrorMsg("");
 
@@ -163,11 +167,14 @@ export default function Shop() {
             console.error(error);
             setErrorMsg(error.message || "Ocurrió un error inesperado.");
             setStatus("error");
+        } finally {
+            enviandoFactura.current = false;
         }
     }
 
     async function handleNcSubmit(e) {                   // envio de la nota credito al backend
         e.preventDefault();
+        if (enviandoNota.current) return;
 
         const items = ARTICULOS
             .filter((art) => ncSelected[art.code])
@@ -175,6 +182,7 @@ export default function Shop() {
 
         if (items.length === 0) return;
 
+        enviandoNota.current = true;
         setNcStatus("loading");
         setNcErrorMsg("");
 
@@ -217,16 +225,16 @@ export default function Shop() {
             console.error(error);
             setNcErrorMsg(error.message || "Ocurrió un error inesperado.");
             setNcStatus("error");
+        } finally {
+            enviandoNota.current = false;
         }
     }
                                                // parte del componete al cliente
     const articulosSeleccionados = ARTICULOS.filter((art) => selected[art.code]); // auxiliar para el resumen
-    const subtotal = articulosSeleccionados.reduce((sum, art) => sum + art.price, 0);
-    const total = subtotal * 1.19; // IVA 19% (debe coincidir con lo enviado a Factus)
+    const total = articulosSeleccionados.reduce((sum, art) => sum + art.price, 0);
 
     const articulosNcSeleccionados = ARTICULOS.filter((art) => ncSelected[art.code]); // auxiliar para el resumen NC
-    const subtotalNc = articulosNcSeleccionados.reduce((sum, art) => sum + art.price, 0);
-    const totalNc = subtotalNc * 1.19; // IVA 19% (debe coincidir con lo enviado a Factus)
+    const totalNc = articulosNcSeleccionados.reduce((sum, art) => sum + art.price, 0);
 
     return (
         <div className="page">

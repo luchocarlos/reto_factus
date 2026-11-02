@@ -105,25 +105,26 @@ const money = (value: number) => round2(value).toFixed(2);
 
 export function calcularTotales(items: ItemOrden[], ivaRate: number = IVA_RATE) {
   let subtotal = 0;
-  let impuestos = 0;
+  let total = 0;
 
   for (const item of items) {
     const cantidad = Number(item.quantity) || 0;
     const precio = Number(item.price) || 0;
     const descuento = Number(item.discount_rate ?? 0) || 0;
-    const base = round2(precio * cantidad * (1 - descuento / 100));
+    const totalItem = round2(precio * cantidad * (1 - descuento / 100));
     const tasa = item.taxes && item.taxes.length > 0
       ? item.taxes.reduce((sum, tax) => sum + (Number(tax.rate) || 0), 0)
       : ivaRate;
+    const base = round2(totalItem / (1 + tasa / 100));
 
     subtotal += base;
-    impuestos += round2(base * (tasa / 100));
+    total += totalItem;
   }
 
   subtotal = round2(subtotal);
-  impuestos = round2(impuestos);
+  total = round2(total);
 
-  return { subtotal, impuestos, total: round2(subtotal + impuestos) };
+  return { subtotal, impuestos: round2(total - subtotal), total };
 }
 
 function normalizarTexto(value: unknown): string {
@@ -197,13 +198,17 @@ function construirItems(items: ItemOrden[]) {
   return items.map((item) => {
     const precio = Number(item.price) || 0;
     const descuento = Number(item.discount_rate ?? 0) || 0;
+    const tasa = item.taxes && item.taxes.length > 0
+      ? item.taxes.reduce((sum, tax) => sum + (Number(tax.rate) || 0), 0)
+      : IVA_RATE;
+    const precioNeto = round2(precio / (1 + tasa / 100));
 
     return {
       code_reference: item.code,
       name: item.name,
       quantity: money(Number(item.quantity) || 0),
       discount_rate: money(descuento),
-      price: money(precio),
+      price: money(precioNeto),
       unit_measure_code: item.unit_measure_code || UNIT_MEASURE_CODE,
       standard_code: item.standard_code || STANDARD_CODE,
       taxes: item.taxes && item.taxes.length > 0
@@ -271,19 +276,26 @@ export function construirPayloadFacturaV1(orden: Orden, numberingRangeId?: numbe
       email: orden.customer.email,
       phone: orden.customer.phone,
     },
-    items: orden.item.map((it) => ({
-      code_reference: it.code,
-      name: it.name,
-      quantity: Number(it.quantity),
-      discount_rate: Number(it.discount_rate ?? 0) || 0,
-      price: Number(it.price),
-      tax_rate: money(IVA_RATE),
-      unit_measure_id: 70,
-      standard_code_id: 1,
-      is_excluded: 0,
-      tribute_id: 1,
-      withholding_taxes: [],
-    })),
+    items: orden.item.map((it) => {
+      const descuento = Number(it.discount_rate ?? 0) || 0;
+      const tasa = it.taxes && it.taxes.length > 0
+        ? it.taxes.reduce((sum, tax) => sum + (Number(tax.rate) || 0), 0)
+        : IVA_RATE;
+
+      return {
+        code_reference: it.code,
+        name: it.name,
+        quantity: Number(it.quantity),
+        discount_rate: descuento,
+        price: Number(it.price) || 0,
+        tax_rate: money(tasa),
+        unit_measure_id: 70,
+        standard_code_id: 1,
+        is_excluded: 0,
+        tribute_id: 1,
+        withholding_taxes: [],
+      };
+    }),
   };
 
   if (isNit) {
@@ -312,18 +324,7 @@ export function construirPayloadNotaCredito(nota: NotaCredito, numberingRangeId?
       },
     ],
     customer: construirCliente(nota.customer),
-    items: nota.items.map((item) => ({
-      code_reference: item.code,
-      name: item.name,
-      quantity: money(Number(item.quantity) || 0),
-      discount_rate: money(Number(item.discount_rate ?? 0) || 0),
-      price: money(Number(item.price) || 0),
-      unit_measure_code: item.unit_measure_code || UNIT_MEASURE_CODE,
-      standard_code: item.standard_code || STANDARD_CODE,
-      taxes: item.taxes && item.taxes.length > 0
-        ? item.taxes.map((tax) => ({ code: tax.code, rate: money(Number(tax.rate) || 0) }))
-        : [{ code: "01", rate: money(IVA_RATE) }],
-    })),
+    items: construirItems(nota.items),
   };
 
   if (nota.bill_number) payload.bill_number = nota.bill_number;
