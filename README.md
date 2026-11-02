@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Reto Factus
 
 Demo full stack de facturación electrónica en Colombia usando la API de [Factus](https://www.factus.com.co/), con panel de compra y generación de nota crédito.
@@ -210,3 +211,23 @@ reto_factus/
 - La nota crédito se valida solo contra v2 (sin fallback a v1).
 - No se persisten facturas ni notas en la base de datos.
 - Falta manejar reintentos y timeouts hacia Factus.
+## Descripción general
+
+Este sitio web funciona como una solución al Reto Factus de Halltec.
+
+### Características principales
+
+Esta app web está optimizada para ofrecer una muestra del rápido proceso de la conexión entre Frontend, Backend y API.
+
+- **Diseño:** Adaptado para una interfaz amigable con el usuario.
+- **Sección de Formulario:** Datos directos al JSON que se envía a Strapi.
+
+### Tecnologías utilizadas
+
+Para el desarrollo de este proyecto se utilizaron las siguientes herramientas:
+
+* **React:** Estructura semántica del sitio.
+* **CSS:** Estilos personalizados.
+* **JavaScript:** Interactividad y funcionalidades dinámicas.
+* **TypeScript:** Interactividad y funcionalidades dinámicas.
+* **Strapi:** Procesamiento de datos y conexión con la API.
