@@ -231,8 +231,14 @@ export default function Shop() {
     return (
         <div className="page">
             <div className="header">
-                <h2>Bienvenido</h2>
+                <h1>Bienvenido</h1>
                 <p>Prueba de uso de la API Factus</p>
+                <p className="descripcion">
+                    Este proyecto es una demo de facturación electrónica para Colombia.
+                    Permite generar facturas y notas crédito desde una interfaz web, y para
+                    llevarlo a cabo se creó una API REST con Strapi que actúa como
+                    intermediario entre el frontend y la API de Factus.
+                </p>
             </div>
             <div className="tabs">
                 <button
