@@ -155,6 +155,66 @@ function extraerNumeroDocumento(data: any): string | undefined {
     ?? data?.bill_number;
 }
 
+export type EstadoDian = {
+  validada: boolean;   // is_validated true (v2) o status 1 (v1)
+  rechazada: boolean;  // sin validar y errores con "Rechazo" -> novedad 405
+  reglas: string[];    // mensajes de las reglas DIAN (FAJ43b, FAU02, ...)
+};
+
+// Reúne los mensajes de las reglas DIAN que Factus reporta en la respuesta.
+// Pueden venir como arreglo de strings, arreglo de objetos con `message` o
+// diccionario campo -> errores (formato de validación 422).
+function coleccionarReglasDian(data: any): string[] {
+  const reglas: string[] = [];
+
+  const agregar = (valor: unknown) => {
+    if (valor === undefined || valor === null) return;
+    if (Array.isArray(valor)) {
+      valor.forEach(agregar);
+      return;
+    }
+    if (typeof valor === 'object') {
+      const item = valor as any;
+      agregar(item.message ?? item.errors ?? null);
+      return;
+    }
+    reglas.push(String(valor));
+  };
+
+  const registro = data?.data?.credit_note
+    ?? data?.credit_note
+    ?? data?.data?.bill
+    ?? data?.bill;
+
+  agregar(registro?.errors ?? null);
+  if (reglas.length === 0) agregar(data?.errors ?? null);
+
+  return reglas;
+}
+
+// Clasifica la respuesta según "Manejo de respuestas API FACTUS" (Versión 2):
+// - Validada: is_validated true.
+// - Rechazada (novedad DIAN 405): sin validar y en `errors` viene "Rechazo".
+// - Cualquier otro caso sin validar queda como pendiente (ej. la DIAN no
+//   respondió a tiempo), que NO se debe eliminar.
+export function evaluarEstadoDian(data: any): EstadoDian {
+  const registro = data?.data?.credit_note
+    ?? data?.credit_note
+    ?? data?.data?.bill
+    ?? data?.bill;
+
+  const validada = registro
+    ? registro.is_validated === true
+      || registro.status === 1
+      || (typeof registro.validated_at === 'string' && registro.validated_at.length > 0)
+    : normalizarTexto(data?.message).includes('validada con exito');
+
+  const reglas = coleccionarReglasDian(data);
+  const rechazada = !validada && reglas.some((regla) => normalizarTexto(regla).includes('rechaz'));
+
+  return { validada, rechazada, reglas };
+}
+
 export function calcularTotales(items: ItemOrden[], ivaRate: number = IVA_RATE) {
   let subtotal = 0;
   let total = 0;
@@ -577,6 +637,27 @@ async function eliminarNotaCreditoNoValidada(token: string, referenceCode: strin
   }
 }
 
+// Reenvía la nota con el mismo payload. Factus es idempotente por
+// reference_code, así que reintentar no genera duplicados. Si responde 409 hay
+// un documento represado de envíos anteriores con ese NIT/rango: se elimina y
+// se vuelve a intentar.
+async function reenviarNotaCredito(token: string, payload: Record<string, any>): Promise<any> {
+  let res = await enviarNotaCredito(token, payload);
+
+  if (res.status === 409) {
+    const conflicto = await leerErrorFactus(res, 'Nota crédito en conflicto al reenviar');
+    debugLog(conflicto.message);
+    await eliminarNotaCreditoNoValidada(token, payload.reference_code);
+    res = await enviarNotaCredito(token, payload);
+  }
+
+  if (!res.ok) {
+    throw await leerErrorFactus(res, 'Reenvío nota crédito falló');
+  }
+
+  return res.json();
+}
+
 async function crearNotaCredito(token: string, nota: NotaCredito, numberingRangeId?: number): Promise<string> {
   const payload = construirPayloadNotaCredito(nota, numberingRangeId);
 
@@ -597,7 +678,49 @@ async function crearNotaCredito(token: string, nota: NotaCredito, numberingRange
     throw await leerErrorFactus(res, 'Crear nota crédito falló');
   }
 
-  const data: any = await res.json();
+  // Novedad DIAN 405 ("Documento rechazado") y estados pendientes, según
+  // https://developers.factus.com.co/manejo-errores (Versión 2).
+  let data: any = await res.json();
+  let estado = evaluarEstadoDian(data);
+
+  if (estado.rechazada) {
+    // Factus registró la nota pero la DIAN la rechazó (is_validated false +
+    // regla con "Rechazo" en errors). Se elimina por reference_code — se puede
+    // reusar la misma referencia — y se reenvía una vez con los mismos datos.
+    debugLog(`nota crédito rechazada por la DIAN: ${estado.reglas.join(' | ')}`);
+    await eliminarNotaCreditoNoValidada(token, payload.reference_code);
+
+    data = await reenviarNotaCredito(token, payload);
+    estado = evaluarEstadoDian(data);
+
+    if (estado.rechazada) {
+      // Se elimina la rechazada para no bloquear los próximos envíos del
+      // NIT/rango y se reporta el motivo exacto de la DIAN al cliente.
+      await eliminarNotaCreditoNoValidada(token, payload.reference_code);
+      throw new FactusApiError(
+        `Nota crédito rechazada por la DIAN (novedad 405): ${estado.reglas.join(' | ')}`,
+        422,
+        { reglas: estado.reglas }
+      );
+    }
+  } else if (!estado.validada) {
+    // Estado pendiente (ej. la DIAN no respondió a tiempo): el documento NO se
+    // elimina; se reintenta el envío con el mismo reference_code y Factus
+    // consulta el estado actual en la DIAN sin generar duplicados.
+    debugLog('nota crédito aún sin validar en la DIAN; reintentando envío');
+    data = await reenviarNotaCredito(token, payload);
+    estado = evaluarEstadoDian(data);
+
+    if (!estado.validada && !estado.rechazada) {
+      throw new FactusApiError(
+        'La nota crédito sigue pendiente de validación por la DIAN. ' +
+        'Reintenta más tarde enviando el mismo reference_code; no se eliminó el documento.',
+        502,
+        { reglas: estado.reglas }
+      );
+    }
+  }
+
   const billNumber = extraerNumeroDocumento(data);
   debugLog('nota crédito creada', billNumber);
 

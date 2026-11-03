@@ -4,6 +4,7 @@ import {
   construirPayloadFactura,
   construirPayloadFacturaV1,
   construirPayloadNotaCredito,
+  evaluarEstadoDian,
   seleccionarRangoNumeracion,
   type NotaCredito,
   type Orden,
@@ -207,5 +208,84 @@ describe('seleccionarRangoNumeracion', () => {
     );
 
     expect(resultado?.id).toBe(5);
+  });
+});
+
+describe('evaluarEstadoDian', () => {
+  const respuestaValidada = {
+    status: 'Created',
+    message: 'Documento con el código de referencia NC-TEST registrado y validado con éxito',
+    data: {
+      credit_note: {
+        number: 'NC76',
+        is_validated: true,
+        validated_at: '20-09-2024 09:13:43 AM',
+        errors: ['Regla: RUT01, Notificación: ...'],
+      },
+    },
+  };
+
+  it('marca como validada cuando is_validated es true', () => {
+    const estado = evaluarEstadoDian(respuestaValidada);
+
+    expect(estado.validada).toBe(true);
+    expect(estado.rechazada).toBe(false);
+  });
+
+  it('detecta la novedad 405 con la regla de rechazo de la DIAN', () => {
+    const estado = evaluarEstadoDian({
+      status: 'Created',
+      message: 'Documento registrado',
+      data: {
+        credit_note: {
+          number: 'NC77',
+          is_validated: false,
+          errors: [
+            'Regla: FAU02, Rechazo: El Valor Bruto antes de tributos no es igual a la suma',
+            'Regla: CAK55, Notificación: Correo electrónico no informado',
+          ],
+        },
+      },
+    });
+
+    expect(estado.validada).toBe(false);
+    expect(estado.rechazada).toBe(true);
+    expect(estado.reglas).toHaveLength(2);
+  });
+
+  it('detecta la novedad 405 aunque la regla venga con tildes o en otro campo', () => {
+    const estado = evaluarEstadoDian({
+      credit_note: {
+        is_validated: false,
+      },
+      errors: [
+        { message: 'Regla: FAJ43b, Rechazo: razon del rechazo' },
+      ],
+    });
+
+    expect(estado.rechazada).toBe(true);
+  });
+
+  it('trata como pendiente (no rechazada) cuando no hay "Rechazo" en errors', () => {
+    const estado = evaluarEstadoDian({
+      status: 'Created',
+      data: {
+        credit_note: {
+          is_validated: false,
+          errors: ['Regla: RUT01, Notificación: se validará el estado del RUT'],
+        },
+      },
+    });
+
+    expect(estado.validada).toBe(false);
+    expect(estado.rechazada).toBe(false);
+  });
+
+  it('trata como pendiente la respuesta sin datos de la nota', () => {
+    const estado = evaluarEstadoDian({ status: 'Created', message: 'otro mensaje' });
+
+    expect(estado.validada).toBe(false);
+    expect(estado.rechazada).toBe(false);
+    expect(estado.reglas).toEqual([]);
   });
 });

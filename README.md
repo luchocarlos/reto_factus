@@ -211,6 +211,20 @@ Un `405 Method Not Allowed` en esa ruta no viene de Factus: viene del backend de
 
 La ruta `POST /api/factus/nota-credito` ya existe en `backend/src/api/factus/routes/factus.ts`; el problema es que la instancia en producción no la tiene cargada.
 
+### Novedad DIAN 405 (documento rechazado) en la nota crédito
+
+No confundir con el HTTP 405 anterior: la **novedad 405** es el estado de la DIAN "Documento rechazado" por validación previa. Factus responde `201` pero entrega `is_validated: false` y en `errors` una regla con la palabra **Rechazo** (por ejemplo `Regla: FAU02, Rechazo: ...`). El criterio oficial está en [Manejo de respuestas API FACTUS](https://developers.factus.com.co/manejo-errores) (Versión 2).
+
+El backend lo maneja automáticamente en `crearNotaCredito` (`backend/src/api/factus/services/factus.ts`):
+
+1. **Rechazo detectado** (`is_validated: false` + "Rechazo" en `errors`): elimina la nota con `DELETE /v2/credit-notes/reference/:reference_code` (la misma referencia es reutilizable) y reenvía una vez con los mismos datos. Si vuelve a ser rechazada, la elimina de nuevo —para no bloquear los próximos envíos de ese NIT/rango con 409— y responde `422` con el motivo exacto de la DIAN:
+   ```json
+   { "error": "Nota crédito rechazada por la DIAN (novedad 405): Regla: FAU02, Rechazo: ...", "detalle": { "reglas": ["..."] } }
+   ```
+2. **Pendiente** (sin validar pero `errors` sin "Rechazo", típico cuando la DIAN no respondió a tiempo): **no se elimina**; se reenvía con el mismo `reference_code` — el envío es idempotente y no genera duplicados — y si sigue pendiente responde `502` indicando reintentar más tarde con la misma referencia.
+
+Las reglas de rechazo más comunes son `FAU02`/`FAU06` (totales de la nota que no cuadran con los de la factura referenciada) y datos del comprador que no coinciden con la factura.
+
 
 ### Frontend en Vercel
 
@@ -243,6 +257,7 @@ reto_factus/
 - La nota crédito se valida solo contra v2 (sin fallback a v1).
 - No se persisten facturas ni notas en la base de datos.
 - Falta manejar reintentos y timeouts hacia Factus.
+
 ## Descripción general
 
 Este sitio web funciona como una solución al Reto Factus de Halltec.
